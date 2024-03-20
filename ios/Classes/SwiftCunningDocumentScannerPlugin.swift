@@ -7,6 +7,7 @@ import VisionKit
 public class SwiftCunningDocumentScannerPlugin: NSObject, FlutterPlugin, VNDocumentCameraViewControllerDelegate {
    var resultChannel :FlutterResult?
    var presentingController: VNDocumentCameraViewController?
+   var noOfImages: Int = 0
 
   public static func register(with registrar: FlutterPluginRegistrar) {
     let channel = FlutterMethodChannel(name: "cunning_document_scanner", binaryMessenger: registrar.messenger())
@@ -16,8 +17,16 @@ public class SwiftCunningDocumentScannerPlugin: NSObject, FlutterPlugin, VNDocum
 
   public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
     if call.method == "getPictures" {
-            let presentedVC: UIViewController? = UIApplication.shared.keyWindow?.rootViewController
+
+            guard let args = call.arguments as? [String: Any],
+                  let noOfPagesArg = args["noOfPages"] as? Int else {
+                result(FlutterError(code: "BAD_ARGS", message: "Missing argument 'noOfPages'", details: nil))
+                return
+            }
+            noOfPages = noOfPagesArg 
             self.resultChannel = result
+
+            let presentedVC: UIViewController? = UIApplication.shared.keyWindow?.rootViewController
             self.presentingController = VNDocumentCameraViewController()
             self.presentingController!.delegate = self
             presentedVC?.present(self.presentingController!, animated: true)
@@ -35,19 +44,35 @@ public class SwiftCunningDocumentScannerPlugin: NSObject, FlutterPlugin, VNDocum
     }
 
     public func documentCameraViewController(_ controller: VNDocumentCameraViewController, didFinishWith scan: VNDocumentCameraScan) {
-        let tempDirPath = self.getDocumentsDirectory()
-        let currentDateTime = Date()
-        let df = DateFormatter()
-        df.dateFormat = "yyyyMMdd-HHmmss"
-        let formattedDate = df.string(from: currentDateTime)
-        var filenames: [String] = []
-        for i in 0 ... scan.pageCount - 1 {
-            let page = scan.imageOfPage(at: i)
-            let url = tempDirPath.appendingPathComponent(formattedDate + "-\(i).png")
+        if noOfPages == 1 && scan.pageCount >= 1 {
+            let tempDirPath = self.getDocumentsDirectory()
+            let currentDateTime = Date()
+            let df = DateFormatter()
+            df.dateFormat = "yyyyMMdd-HHmmss"
+            let formattedDate = df.string(from: currentDateTime)
+            var filenames: [String] = []
+            
+            let page = scan.imageOfPage(at: 0)
+            let url = tempDirPath.appendingPathComponent(formattedDate + "-0.png")
             try? page.pngData()?.write(to: url)
             filenames.append(url.path)
+            
+            resultChannel?(filenames)
+        } else {
+            let tempDirPath = self.getDocumentsDirectory()
+            let currentDateTime = Date()
+            let df = DateFormatter()
+            df.dateFormat = "yyyyMMdd-HHmmss"
+            let formattedDate = df.string(from: currentDateTime)
+            var filenames: [String] = []
+            for i in 0 ..< scan.pageCount {
+                let page = scan.imageOfPage(at: i)
+                let url = tempDirPath.appendingPathComponent(formattedDate + "-\(i).png")
+                try? page.pngData()?.write(to: url)
+                filenames.append(url.path)
+            }
+            resultChannel?(filenames)
         }
-        resultChannel?(filenames)
         presentingController?.dismiss(animated: true)
     }
 
